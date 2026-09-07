@@ -1,0 +1,14 @@
+name: 'entsoe'
+version: '1.0.0'
+config-version: 2
+
+profile: 'entsoe'
+
+model-paths: ["models"]
+
+models:
+  entsoe:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

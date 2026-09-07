@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# dlt (stan pipeline + poświadczenia)
+.dlt/
+
+# Baza danych (build artifact)
+*.duckdb
+
+# Legacy scraper (dane + poświadczenia)
+output/
+stary_scraper/state.json
+stary_scraper/config.txt
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/.user.yml
