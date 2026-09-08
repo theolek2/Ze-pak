@@ -41,6 +41,13 @@ def fetch(entity, filter=None, first=None):
             time.sleep(REQUEST_DELAY)
 
 
+def fetch_dates(entity, dates):
+    """Pobiera encję dla listy dni (business_date eq '<dzien>'); yield'uje wiersze."""
+    for d in dates:
+        for row in fetch(entity, filter=f"business_date eq '{d}'"):
+            yield row
+
+
 def utc_now_str():
     """Aktualny czas UTC w formacie pasującym do publication_ts_utc."""
     return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())

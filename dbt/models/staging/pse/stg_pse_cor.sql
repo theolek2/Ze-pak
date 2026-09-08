@@ -11,7 +11,8 @@ dedup as (
 select
     dtime_utc,
     cast(business_date as date) as business_date,
-    cor_cost, cor_fcst,
+    cor_cost,
+    cor_fcst,
     publication_ts_utc
 from dedup
 where rn = 1
