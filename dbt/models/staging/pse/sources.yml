@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: raw_pse
+    schema: raw_pse
+    tables:
+      - name: mbp_tp
+      - name: cmbp_tp
+      - name: zmb
+      - name: cor
+      - name: csdac_pln
+      - name: codn
+      - name: use_sprz_rbb
+      - name: use_sprz_rbn
+      - name: kmb_kro_rozl
+      - name: price_fcst

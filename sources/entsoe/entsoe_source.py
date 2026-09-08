@@ -11,7 +11,7 @@ import io
 
 import dlt
 
-from entsoe_client import (
+from .entsoe_client import (
     TokenManager,
     fetch_export_log,
     filename_to_folder,

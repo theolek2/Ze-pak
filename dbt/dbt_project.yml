@@ -6,6 +6,9 @@ profile: 'entsoe'
 
 model-paths: ["models"]
 
+on-run-start:
+  - "SET TimeZone='UTC'"
+
 models:
   entsoe:
     staging:

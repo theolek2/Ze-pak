@@ -1,28 +1,39 @@
-# ENTSO-E Energy Warehouse
+# Energy Warehouse (ENTSO-E + PSE)
 
-Mini-hurtownia danych o energetyce (na start: ceny energii ENTSO-E), zbudowana wg wzorca **ELT**:
+Mini-hurtownia danych o energetyce (ceny energii ENTSO-E + rynek bilansowania PSE), zbudowana wg wzorca **ELT**:
 
 ```
-ENTSO-E API → dlt (pobiera) → DuckDB (baza) → dbt (modeluje) → Streamlit (podgląd)
+ENTSO-E API ─┐
+             ├─> dlt (pobiera) ─> DuckDB (baza) ─> dbt (modeluje) ─> Streamlit (podgląd)
+PSE API     ─┘
 ```
 
-- **dlt** pobiera z API tylko pliki, które zmieniły się od ostatniego uruchomienia (wg logu `Export_log_r3.csv`) i ładuje je do DuckDB (warstwa `raw`).
-- **dbt** typuje, deduplikuje i buduje model gwiazdy (`dim_area` + `fct_energy_prices`) w schemacie `analytics`.
-- **Streamlit** pokazuje zawartość bazy i wykres cen.
+- **dlt** pobiera z API tylko dane, które zmieniły się od ostatniego uruchomienia i ładuje do DuckDB (dataset `raw` dla ENTSO-E, `raw_pse` dla PSE).
+- **dbt** typuje, deduplikuje i buduje model gwiazdy w schemacie `analytics`.
+- **Streamlit** pokazuje zawartość bazy i wykresy.
+
+## Źródła danych
+
+| Źródło | Opis | Auth | Dataset |
+|---|---|---|---|
+| ENTSO-E File Library | Ceny energii (EnergyPrices 12.1.D) | Keycloak (login/hasło) | `raw` |
+| PSE Raporty OSP | Rynek bilansowania (zakup, dostawy, ceny) | publiczne (brak) | `raw_pse` |
 
 ## Struktura plików
 
 | Plik / folder | Co robi |
 |---|---|
-| `pipeline/entsoe_client.py` | Wspólny klient API ENTSO-E: auth (Keycloak), rate-limit, log, pobieranie plików |
-| `pipeline/entsoe_source.py` | Źródło dlt: parsuje `EnergyPrices_12.1.D` i yield'uje wiersze |
-| `pipeline/run_pipeline.py` | Entry point pipeline dlt → `energy.duckdb` (`--seed` ustawia baseline) |
-| `pipeline/run_pipeline.bat` | Wrapper do Windows Task Scheduler (co godzinę) |
-| `app.py` | Aplikacja Streamlit: podgląd tabel + wykres cen |
-| `dbt/` | Projekt dbt: `stg_energy_prices`, `dim_area`, `fct_energy_prices` |
-| `energy.duckdb` | Baza (plik, build artifact — gitignored) |
-| `requirements.txt` | Zależności Pythona |
-| `stary_scraper/` | **Legacy** scraper (MVP, pobierał CSV do plików). Nieużywany — można usunąć |
+| `sources/entsoe/` | Źródło ENTSO-E: `entsoe_client.py` (auth/rate-limit/log), `entsoe_source.py` (dlt) |
+| `sources/pse/` | Źródło PSE: `pse_client.py` (OData), `pse_source.py` (dlt, incremental) |
+| `pipeline/run_pipeline.py` | Orchestrator: odpala oba źródła (`--seed`, `--backfill-days N`, `--pse-only`) |
+| `pipeline/run_pipeline.bat` | Wrapper Task Scheduler: dlt + dbt run |
+| `dbt/models/staging/entsoe/`, `staging/pse/` | Staging (dedupe + typowanie) |
+| `dbt/models/marts/entsoe/`, `marts/pse/` | Martsy: `dim_area`, `fct_energy_prices`, `fct_pse_procurement`, `fct_pse_balancing_prices` |
+| `app.py` | Aplikacja Streamlit (read-only, UTC) |
+| `docs/pse_endpoints.md` | Backlog endpointów PSE (4 etapy + Tor B) |
+| `energy.duckdb` | Baza (plik, gitignored) |
+| `.dlt/secrets.toml` | Poświadczenia ENTSO-E (gitignored) |
+| `stary_scraper/` | **Legacy** scraper CSV (nieużywany) |
 
 ## Uruchomienie
 
@@ -33,13 +44,13 @@ python -m venv .venv
 
 # 2. Poświadczenia ENTSO-E → .dlt\secrets.toml
 #    entsoe_username = "..."
-#    entsoe_password = "..."
+#    entsoe_password = "..."   (PSE nie wymaga poświadczeń)
 
 # 3. Pipeline (baseline, potem co godzinę przez Task Scheduler)
 .venv\Scripts\python.exe pipeline\run_pipeline.py --seed
-.venv\Scripts\python.exe pipeline\run_pipeline.py
+.venv\Scripts\python.exe pipeline\run_pipeline.py --backfill-days 2   # PSE: wstecz N dni (test)
 
-# 4. Model dbt
+# 4. Modele dbt
 cd dbt
 ..\.venv\Scripts\dbt.exe run --profiles-dir .
 
@@ -48,9 +59,11 @@ cd ..
 .venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-## Model danych (grain)
+## Model danych
 
-`fct_energy_prices` — jedna cena na `(datetime, resolution_code, area_map_code, contract_type)`.
-`dim_area` — wspólny wymiar obszaru (`area_map_code` = klucz naturalny), do którego dołączą kolejne źródła.
+- `fct_energy_prices` (entsoe) — grain: `(datetime, resolution_code, area_map_code, contract_type)`.
+- `dim_area` — wspólny wymiar obszaru (`area_map_code` = klucz naturalny).
+- `fct_pse_procurement` (pse) — kupione moce bilansujące: `(dtime_utc, product, quantity_mw, price_pln_per_mw)`.
+- `fct_pse_balancing_prices` (pse) — ceny: `(dtime_utc, price_type, price)`.
 
-## model użyty do kogowania: deepseek V4 Pro - modem - opencode
+Wszystkie znaczniki czasu są w **UTC** (kolumny `_utc`, DuckDB `TimeZone='UTC'`).

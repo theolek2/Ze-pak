@@ -1,42 +1,70 @@
 #!/usr/bin/env python3
 r"""
-Pipeline dlt: ładuje dane ENTSO-E do DuckDB (energy.duckdb).
-
-Pobiera tylko pliki zmienione od ostatniego uruchomienia (wg logu Export_log_r3.csv).
+Orchestrator pipeline'ów dlt: ENTSO-E + PSE -> DuckDB (energy.duckdb).
 
 Użycie:
-  .venv\Scripts\python.exe run_pipeline.py            # pobierz tylko zmienione pliki
-  .venv\Scripts\python.exe run_pipeline.py --seed     # baseline: oznacz wszystkie jako pobrane (bez pobierania)
+  .venv\Scripts\python.exe run_pipeline.py                  # pobierz zmiany (entsoe + pse)
+  .venv\Scripts\python.exe run_pipeline.py --seed           # baseline (bez pobierania) obu źródeł
+  .venv\Scripts\python.exe run_pipeline.py --backfill-days 2   # PSE: wstecz N dni (mały test)
+  .venv\Scripts\python.exe run_pipeline.py --pse-only       # tylko PSE
 """
 
 import argparse
 import os
+import sys
+from datetime import datetime, timedelta, timezone
 
 import dlt
 
-from entsoe_source import energy_prices
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
+sys.path.insert(0, PROJECT_ROOT)
 
-PIPELINE_NAME = "entsoe"
-DATASET = "raw"
+from sources.entsoe.entsoe_source import energy_prices
+from sources.pse.pse_source import pse_source
+
 DUCKDB_PATH = os.path.join(PROJECT_ROOT, "energy.duckdb")
 
 
-def run(seed=False):
+def _dest():
+    return dlt.destinations.duckdb(DUCKDB_PATH)
+
+
+def run_entsoe(seed):
     pipeline = dlt.pipeline(
-        pipeline_name=PIPELINE_NAME,
-        destination=dlt.destinations.duckdb(DUCKDB_PATH),
-        dataset_name=DATASET,
+        pipeline_name="entsoe", destination=_dest(), dataset_name="raw"
     )
-    info = pipeline.run(energy_prices(seed=seed))
-    print(info)
+    pipeline.run(energy_prices(seed=seed))
+
+
+def run_pse(seed, incremental_start):
+    pipeline = dlt.pipeline(
+        pipeline_name="pse", destination=_dest(), dataset_name="raw_pse"
+    )
+    pipeline.run(pse_source(seed=seed, incremental_start=incremental_start))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Orchestrator dlt (ENTSO-E + PSE) -> DuckDB")
+    parser.add_argument("--seed", action="store_true", help="baseline (bez pobierania)")
+    parser.add_argument("--backfill-days", type=int, default=None,
+                        help="PSE: pobierz rekordy opublikowane w ciągu ostatnich N dni")
+    parser.add_argument("--entsoe-only", action="store_true", help="tylko entsoe")
+    parser.add_argument("--pse-only", action="store_true", help="tylko pse")
+    args = parser.parse_args()
+
+    incremental_start = None
+    if args.backfill_days:
+        start = datetime.now(timezone.utc) - timedelta(days=args.backfill_days)
+        incremental_start = start.strftime("%Y-%m-%d %H:%M:%S")
+
+    if not args.pse_only:
+        print("=== ENTSO-E ===", flush=True)
+        run_entsoe(seed=args.seed)
+    if not args.entsoe_only:
+        print("=== PSE ===", flush=True)
+        run_pse(seed=args.seed, incremental_start=incremental_start)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Pipeline dlt ENTSO-E -> DuckDB")
-    parser.add_argument("--seed", action="store_true",
-                        help="baseline: oznacz wszystkie pliki jako pobrane bez pobierania")
-    args = parser.parse_args()
-    run(seed=args.seed)
+    main()

@@ -13,7 +13,9 @@ st.title("ENTSO-E — podgląd bazy DuckDB")
 
 @st.cache_resource
 def get_conn():
-    return duckdb.connect(DB_PATH, read_only=True)
+    conn = duckdb.connect(DB_PATH, read_only=True)
+    conn.execute("SET TimeZone='UTC'")
+    return conn
 
 
 try:

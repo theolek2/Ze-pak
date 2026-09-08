@@ -13,7 +13,7 @@ deduped as (
 )
 
 select
-    cast(datetime as timestamp) as datetime,        -- dane UTC; zrzucam bledny offset sesji
+    datetime,
     resolution_code,
     area_code,
     area_name,
@@ -22,6 +22,6 @@ select
     contract_type,
     try_cast(price as double) as price,
     currency,
-    cast(update_time as timestamp) as update_time
+    update_time
 from deduped
 where rn = 1
