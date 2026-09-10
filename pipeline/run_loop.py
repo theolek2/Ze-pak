@@ -60,11 +60,13 @@ def acquire_lock() -> bool:
     return True
 
 
-def run_step(cmd: list[str], label: str, cwd: str, log_fh=None) -> int:
+def run_step(cmd: list[str], label: str, cwd: str, log_fh=None) -> tuple[int, str]:
+    """Uruchom krok; zwroc (rc, caly output) do dalszej analizy (np. rerun dlt)."""
     log(f"[{label}] start (cwd={os.path.basename(cwd)})", log_fh)
     t0 = time.time()
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     dt = time.time() - t0
+    output = (proc.stdout or "") + "\n" + (proc.stderr or "")
     if proc.stdout:
         for line in proc.stdout.strip().splitlines()[-12:]:
             log(f"[{label}|out] {line}", log_fh)
@@ -72,7 +74,31 @@ def run_step(cmd: list[str], label: str, cwd: str, log_fh=None) -> int:
         for line in proc.stderr.strip().splitlines()[-12:]:
             log(f"[{label}|err] {line}", log_fh)
     log(f"[{label}] koniec rc={proc.returncode} ({dt:.1f}s)", log_fh)
-    return proc.returncode
+    return proc.returncode, output
+
+
+def has_pending_packages(output: str) -> bool:
+    """Czy dlt zglosil zalegle paczki (swieze dane NIE wyekstrahowane)?"""
+    text = output.lower()
+    return ("pending load packages" in text) or ("will not be extracted" in text)
+
+
+def run_dlt_step(py: str, args, log_fh=None) -> bool:
+    """dlt z auto-rerunem gdy poprzedni run zostawil zalegle paczki (np. po killu)."""
+    attempts = 1 + max(int(args.dlt_retries), 0)
+    for n in range(1, attempts + 1):
+        rc, output = run_step([py, RUN_PIPELINE], f"dlt-{n}", PROJECT_ROOT, log_fh)
+        if rc != 0:
+            return False
+        if has_pending_packages(output) and n < attempts:
+            log(f"[dlt] wykryto zalegle paczki (proba {n}/{attempts}) - "
+                f"ponawiam dlt aby dobrac swieze dane.", log_fh)
+            continue
+        if has_pending_packages(output):
+            log("[dlt] zalegle paczki mimo rerunow - lece dalej z tym co jest.",
+                log_fh)
+        return True
+    return True
 
 
 def run_once(args, log_fh=None) -> bool:
@@ -80,14 +106,13 @@ def run_once(args, log_fh=None) -> bool:
     ok = True
 
     if not args.skip_dlt:
-        rc = run_step([py, RUN_PIPELINE], "dlt", PROJECT_ROOT, log_fh)
-        ok = rc == 0
+        ok = run_dlt_step(py, args, log_fh)
         if not ok and not args.continue_on_error:
             log("Obieg przerwany po dlt.", log_fh)
             return False
 
     if (ok or args.continue_on_error) and not args.skip_dbt:
-        rc = run_step(["dbt", "run", "--profiles-dir", "."], "dbt", DBT_DIR, log_fh)
+        rc, _ = run_step(["dbt", "run", "--profiles-dir", "."], "dbt", DBT_DIR, log_fh)
         ok = ok and rc == 0
         if rc != 0 and not args.continue_on_error:
             log("Obieg przerwany po dbt.", log_fh)
@@ -101,7 +126,7 @@ def run_once(args, log_fh=None) -> bool:
             cmd += ["--source", args.source]
         if args.force_sync:
             cmd.append("--force")
-        rc = run_step(cmd, "sync", PROJECT_ROOT, log_fh)
+        rc, _ = run_step(cmd, "sync", PROJECT_ROOT, log_fh)
         ok = ok and rc == 0
 
     return ok
@@ -133,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Lec dalej mimo bledu etapu.")
     parser.add_argument("--jitter", type=int, default=60,
                         help="Losowe +/- sekund do sleep (domyslnie 60).")
+    parser.add_argument("--dlt-retries", type=int, default=2,
+                        help="Ile razy ponowic dlt po warningu o zaleglych paczkach.")
     args = parser.parse_args(argv)
 
     unknown = sorted(set(args.tables) - set(CANONICAL_TABLES))
