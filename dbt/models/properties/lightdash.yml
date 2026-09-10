@@ -1,0 +1,311 @@
+version: 2
+
+models:
+  - name: dim_area
+    description: 'Słownik obszarów rynkowych ENTSO-E używany jako wspólny wymiar.'
+    config:
+      tags: ['lightdash']
+      meta:
+        label: 'ENTSO-E / Obszary'
+        groups: ['ENTSO-E', 'Wymiary']
+    columns:
+      - name: area_map_code
+        description: 'Naturalny klucz obszaru, np. PL.'
+        tests:
+          - unique
+          - not_null
+      - name: area_code
+        description: 'Kod EIC obszaru.'
+      - name: area_name
+        description: 'Nazwa obszaru.'
+      - name: area_type_code
+        description: 'Typ obszaru.'
+
+  - name: fct_energy_prices
+    description: 'Ceny energii w UTC z kluczem obszaru do dim_area.'
+    config:
+      tags: ['lightdash']
+      meta:
+        label: 'ENTSO-E / Ceny energii'
+        groups: ['ENTSO-E', 'Market']
+        joins:
+          - join: dim_area
+            sql_on: ${fct_energy_prices.area_map_code} = ${dim_area.area_map_code}
+    columns:
+      - name: datetime
+        description: 'Znacznik czasu w UTC.'
+        config:
+          meta:
+            dimension:
+              type: timestamp
+      - name: area_map_code
+        description: 'Obszar połączony z wymiarem dim_area.'
+      - name: resolution_code
+        description: 'Rozdzielczość pomiaru.'
+      - name: contract_type
+        description: 'Rodzaj kontraktu, np. Day-ahead.'
+      - name: price
+        description: 'Cena energii.'
+        config:
+          meta:
+            metrics:
+              average_price:
+                type: average
+                description: 'Średnia cena energii.'
+              max_price:
+                type: max
+                description: 'Maksymalna cena energii.'
+              min_price:
+                type: min
+                description: 'Minimalna cena energii.'
+      - name: currency
+        description: 'Waluta ceny.'
+
+  - name: stg_entsoe_generation_forecasts
+    description: 'Oczyszczone prognozy generacji wiatru i słońca w UTC.'
+    config:
+      meta:
+        hidden: true
+    columns:
+      - name: datetime
+        tests:
+          - not_null
+      - name: area_code
+        tests:
+          - not_null
+      - name: production_type
+        tests:
+          - not_null
+
+  - name: fct_entsoe_generation_forecasts
+    description: 'Prognozy generacji w UTC w długim formacie, z kluczem jednostki EIC do dim_area.'
+    config:
+      tags: ['lightdash']
+      meta:
+        label: 'ENTSO-E / Prognozy generacji'
+        groups: ['ENTSO-E', 'Generation']
+        joins:
+          - join: dim_area
+            sql_on: ${fct_entsoe_generation_forecasts.area_code} = ${dim_area.area_code}
+    columns:
+      - name: datetime
+        description: 'Znacznik czasu w UTC.'
+        config:
+          meta:
+            dimension:
+              type: timestamp
+      - name: area_code
+        description: 'Jednostka EIC połączona z wymiarem dim_area.'
+      - name: resolution_code
+        description: 'Rozdzielczość pomiaru.'
+      - name: production_type
+        description: 'Rodzaj produkcji, np. wiatr albo słońce.'
+      - name: forecast_category
+        description: 'Kategoria prognozy: day-ahead, intraday albo current.'
+      - name: forecast_mw
+        description: 'Prognozowana generacja w MW.'
+        config:
+          meta:
+            metrics:
+              average_forecast_mw:
+                type: average
+                description: 'Średnia prognozowana generacja w MW.'
+              max_forecast_mw:
+                type: max
+                description: 'Maksymalna prognozowana generacja w MW.'
+              total_forecast_mw:
+                type: sum
+                description: 'Suma prognozowanej generacji w MW w wybranym zakresie.'
+
+  - name: fct_pse_zmb
+    description: 'Zapotrzebowanie na moce bilansujące PSE w UTC, według produktu.'
+    config:
+      tags: ['lightdash']
+      meta:
+        label: 'PSE / Zapotrzebowanie na moce'
+        groups: ['PSE', 'Bilansowanie']
+    columns:
+      - name: dtime_utc
+        description: 'Znacznik czasu w UTC.'
+        config:
+          meta:
+            dimension:
+              type: timestamp
+      - name: business_date
+        description: 'Doba handlowa.'
+        config:
+          meta:
+            dimension:
+              type: date
+      - name: product
+        description: 'Produkt i kierunek rezerwy.'
+      - name: demand_mw
+        description: 'Zapotrzebowanie w MW.'
+        config:
+          meta:
+            metrics:
+              total_demand_mw:
+                type: sum
+                description: 'Suma zapotrzebowania w MW.'
+              average_demand_mw:
+                type: average
+                description: 'Średnie zapotrzebowanie w MW dla wybranych wierszy.'
+              max_demand_mw:
+                type: max
+                description: 'Maksymalne zapotrzebowanie w MW.'
+
+  - name: fct_pse_cor
+    description: 'Ceny COR w UTC.'
+    config:
+      tags: ['lightdash']
+      meta:
+        label: 'PSE / Ceny COR'
+        groups: ['PSE', 'Ceny']
+    columns:
+      - name: dtime_utc
+        description: 'Znacznik czasu w UTC.'
+        config:
+          meta:
+            dimension:
+              type: timestamp
+      - name: business_date
+        description: 'Doba handlowa.'
+        config:
+          meta:
+            dimension:
+              type: date
+      - name: cor_cost
+        description: 'Rozliczeniowy koszt COR.'
+        config:
+          meta:
+            metrics:
+              average_cor_cost:
+                type: average
+                description: 'Średni koszt COR.'
+              max_cor_cost:
+                type: max
+                description: 'Maksymalny koszt COR.'
+      - name: cor_fcst
+        description: 'Prognozowany koszt COR.'
+        config:
+          meta:
+            metrics:
+              average_cor_fcst:
+                type: average
+                description: 'Średnia prognoza COR.'
+              max_cor_fcst:
+                type: max
+                description: 'Maksymalna prognoza COR.'
+
+  - name: stg_entsoe_imbalance_prices
+    description: 'Oczyszczone ceny niezbilansowania ENTSO-E w UTC.'
+    config:
+      meta:
+        hidden: true
+    columns:
+      - name: datetime
+        tests:
+          - not_null
+      - name: area_map_code
+        tests:
+          - not_null
+
+  - name: fct_entsoe_imbalance_prices
+    description: 'Ceny niezbilansowania w UTC w długim formacie, z kluczem obszaru do dim_area.'
+    config:
+      tags: ['lightdash']
+      meta:
+        label: 'ENTSO-E / Ceny niezbilansowania'
+        groups: ['ENTSO-E', 'Market']
+        joins:
+          - join: dim_area
+            sql_on: ${fct_entsoe_imbalance_prices.area_map_code} = ${dim_area.area_map_code}
+    columns:
+      - name: datetime
+        description: 'Znacznik czasu w UTC.'
+        config:
+          meta:
+            dimension:
+              type: timestamp
+      - name: area_map_code
+        description: 'Obszar połączony z wymiarem dim_area.'
+      - name: resolution_code
+        description: 'Rozdzielczość pomiaru.'
+      - name: currency
+        description: 'Waluta ceny.'
+      - name: status
+        description: 'Status publikacji pliku, np. rozliczenie albo wartość pośrednia.'
+      - name: direction
+        description: 'Kierunek niezbilansowania: dodatni albo ujemny.'
+      - name: price_category
+        description: 'Składnik ceny: niezbilansowanie, niedobór, zachęta albo neutralność finansowa.'
+      - name: price
+        description: 'Cena niezbilansowania.'
+        config:
+          meta:
+            metrics:
+              average_imbalance_price:
+                type: average
+                description: 'Średnia cena niezbilansowania.'
+              max_imbalance_price:
+                type: max
+                description: 'Maksymalna cena niezbilansowania.'
+              min_imbalance_price:
+                type: min
+                description: 'Minimalna cena niezbilansowania.'
+
+  - name: stg_entsoe_aggregated_generation
+    description: 'Oczyszczona generacja zagregowana ENTSO-E w UTC.'
+    config:
+      meta:
+        hidden: true
+    columns:
+      - name: datetime
+        tests:
+          - not_null
+      - name: area_code
+        tests:
+          - not_null
+      - name: production_type
+        tests:
+          - not_null
+
+  - name: fct_entsoe_aggregated_generation
+    description: 'Generacja zagregowana w UTC w długim formacie, z kluczem jednostki EIC do dim_area.'
+    config:
+      tags: ['lightdash']
+      meta:
+        label: 'ENTSO-E / Generacja zagregowana'
+        groups: ['ENTSO-E', 'Generation']
+        joins:
+          - join: dim_area
+            sql_on: ${fct_entsoe_aggregated_generation.area_code} = ${dim_area.area_code}
+    columns:
+      - name: datetime
+        description: 'Znacznik czasu w UTC.'
+        config:
+          meta:
+            dimension:
+              type: timestamp
+      - name: area_code
+        description: 'Jednostka EIC połączona z wymiarem dim_area.'
+      - name: resolution_code
+        description: 'Rozdzielczość pomiaru.'
+      - name: production_type
+        description: 'Rodzaj produkcji.'
+      - name: measure_category
+        description: 'Kategoria pomiaru: wytwarzanie albo pobór.'
+      - name: actual_mw
+        description: 'Zmierzona moc w MW.'
+        config:
+          meta:
+            metrics:
+              average_actual_mw:
+                type: average
+                description: 'Średnia zmierzona moc w MW.'
+              max_actual_mw:
+                type: max
+                description: 'Maksymalna zmierzona moc w MW.'
+              total_actual_mw:
+                type: sum
+                description: 'Suma zmierzonych megawatów w wybranym zakresie.'

@@ -10,8 +10,12 @@ Legenda statusu:
 
 ## PODSUMOWANIE
 
-- **Zrobione:** 1 instrument — `EnergyPrices_12.1.D_r3.1` (pipeline dlt + dbt: `stg_energy_prices`, `dim_area`, `fct_energy_prices`).
-- **Do zrobienia:** pozostałe instrumenty. Najbliższe (były w starym scraperze): `GenerationForecastsForWindAndSolar_14.1.D`, `AggregatedGenerationPerType_16.1.B_C`, `ImbalancePrices_17.1.G_r3.1`.
+- **Zrobione:** 4 instrumenty z bezpiecznym pierwszym pobraniem:
+  - `EnergyPrices_12.1.D_r3.1` (pipeline dlt + dbt: `stg_energy_prices`, `dim_area`, `fct_energy_prices`),
+  - `ImbalancePrices_17.1.G_r3.1` (`stg_entsoe_imbalance_prices`, `fct_entsoe_imbalance_prices`),
+  - `GenerationForecastsForWindAndSolar_14.1.D_r3` (`stg_entsoe_generation_forecasts`, `fct_entsoe_generation_forecasts`),
+  - `AggregatedGenerationPerType_16.1.B_C_r3` (`stg_entsoe_aggregated_generation`, `fct_entsoe_aggregated_generation`).
+- Trzy nowe instrumenty mają aktualnie jedynie kontrolowany pierwszy plik; pełna historia pozostaje wyłączenia do osobnej decyzji.
 
 ## Jak dodać kolejny instrument (wzorzec)
 
@@ -19,7 +23,7 @@ Legenda statusu:
 2. Uruchomić `run_pipeline.py --entsoe-only --seed` (baseline, bez pobierania).
 3. dbt: `staging/entsoe/stg_<instrument>.sql` + ewentualnie `marts/entsoe/fct_<instrument>.sql`.
 
-> Uwaga: `entsoe_source.py` jest obecnie zahardkodowane na `EnergyPrices_12.1.D_r3.1` (TARGET). Żeby obsłużyć wiele instrumentów, trzeba przerobić na fabrykę (jak w `pse_source.py` — słownik ENCJI → resource).
+> `entsoe_source.py` ma już rejestr `INSTRUMENTS` z fabryką zasobów, wyborem `--entsoe-instruments`, dokładnym plikiem `--entsoe-file` oraz trybem `--entsoe-latest`. Domyślnie aktywne są tylko wpisy oznaczone `enabled: True`.
 
 ## Instrumenty (katalog z File Library Guide)
 
@@ -54,8 +58,8 @@ Legenda statusu:
 
 | Instrument | Status |
 |---|---|
-| AggregatedGenerationPerType_16.1.B_C_r3 | ⬜ (był w starym scraperze) |
-| GenerationForecastsForWindAndSolar_14.1.D_r3 | ⬜ (był w starym scraperze) |
+| AggregatedGenerationPerType_16.1.B_C_r3 | ✅ (pierwszy plik kontrolny) |
+| GenerationForecastsForWindAndSolar_14.1.D_r3 | ✅ (pierwszy plik kontrolny) |
 | ActualGenerationOutputPerGenerationUnit_16.1.A_r3 | ⬜ |
 | AggregatedFillingRateOfWaterReservoirs_16.1.D_r3 | ⬜ |
 | DayAheadAggregatedGeneration_14.1.C_r3 | ⬜ |
@@ -92,7 +96,7 @@ Legenda statusu:
 
 | Instrument | Status |
 |---|---|
-| ImbalancePrices_17.1.G_r3.1 | ⬜ (był w starym scraperze) |
+| ImbalancePrices_17.1.G_r3.1 | ✅ (pierwszy plik kontrolny) |
 | CurrentBalancingState_12.3.A_r3 | ⬜ |
 | AggregatedBalancingEnergyBids_12.3.E_r3.1 | ⬜ |
 | AmountAndPricesPaidOfBalancingReservesUnderContract_17.1.B_C_r3.1 | ⬜ |

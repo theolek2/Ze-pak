@@ -5,3 +5,6 @@ sources:
     schema: raw
     tables:
       - name: energy_prices
+      - name: imbalance_prices
+      - name: generation_forecasts
+      - name: aggregated_generation

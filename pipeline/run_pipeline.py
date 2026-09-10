@@ -9,6 +9,7 @@ Użycie:
   .venv\Scripts\python.exe run_pipeline.py --pse-only --date 2026-09-08       # PSE: jedna doba
   .venv\Scripts\python.exe run_pipeline.py --pse-only --from-date 2026-09-06  # PSE: od daty do dziś
   .venv\Scripts\python.exe run_pipeline.py --pse-only --backfill-days 2       # PSE: wstecz N dni
+  .venv\Scripts\python.exe run_pipeline.py --entsoe-only --entsoe-instruments imbalance_prices --entsoe-latest
 """
 
 import argparse
@@ -22,7 +23,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
-from sources.entsoe.entsoe_source import energy_prices
+from sources.entsoe.entsoe_source import entsoe_source
 from sources.pse.pse_source import pse_source
 
 DUCKDB_PATH = os.path.join(PROJECT_ROOT, "energy.duckdb")
@@ -32,11 +33,18 @@ def _dest():
     return dlt.destinations.duckdb(DUCKDB_PATH)
 
 
-def run_entsoe(seed):
+def run_entsoe(seed, selected_instruments=None, selected_files=None, latest_only=False):
     pipeline = dlt.pipeline(
         pipeline_name="entsoe", destination=_dest(), dataset_name="raw"
     )
-    pipeline.run(energy_prices(seed=seed))
+    pipeline.run(
+        entsoe_source(
+            seed=seed,
+            selected_instruments=selected_instruments,
+            selected_files=selected_files,
+            latest_only=latest_only,
+        )
+    )
 
 
 def run_pse(seed, incremental_start, dates):
@@ -67,6 +75,23 @@ def main():
                         help="PSE: pobierz od doby do dziś (YYYY-MM-DD)")
     parser.add_argument("--entsoe-only", action="store_true", help="tylko entsoe")
     parser.add_argument("--pse-only", action="store_true", help="tylko pse")
+    parser.add_argument(
+        "--entsoe-instruments",
+        nargs="+",
+        default=None,
+        help="ENTSO-E: wybrane instrumenty, np. energy_prices imbalance_prices",
+    )
+    parser.add_argument(
+        "--entsoe-file",
+        action="append",
+        default=None,
+        help="ENTSO-E: dokładna nazwa pliku CSV do pobrania; można powtarzać",
+    )
+    parser.add_argument(
+        "--entsoe-latest",
+        action="store_true",
+        help="ENTSO-E: tylko najnowszy plik wybranego instrumentu",
+    )
     args = parser.parse_args()
 
     incremental_start = None
@@ -82,7 +107,12 @@ def main():
 
     if not args.pse_only:
         print("=== ENTSO-E ===", flush=True)
-        run_entsoe(seed=args.seed)
+        run_entsoe(
+            seed=args.seed,
+            selected_instruments=args.entsoe_instruments,
+            selected_files=args.entsoe_file,
+            latest_only=args.entsoe_latest,
+        )
     if not args.entsoe_only:
         print("=== PSE ===", flush=True)
         run_pse(seed=args.seed, incremental_start=incremental_start, dates=dates)

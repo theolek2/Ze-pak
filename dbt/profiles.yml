@@ -6,3 +6,12 @@ entsoe:
       path: "../energy.duckdb"
       schema: analytics
       threads: 4
+    prod:
+      type: duckdb
+      path: "md:energy_lightdash_test"
+      schema: analytics
+      threads: 1
+      extensions:
+        - motherduck
+      settings:
+        motherduck_token: "{{ env_var('MOTHERDUCK_TOKEN') }}"
