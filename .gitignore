@@ -8,6 +8,10 @@ __pycache__/
 
 # Baza danych (build artifact)
 *.duckdb
+*.duckdb.wal
+
+# Logi petli (artefakt operacyjny)
+logs/
 
 # Legacy scraper (dane + poświadczenia)
 output/
