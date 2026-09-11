@@ -48,17 +48,27 @@ def load_creds():
     return s["entsoe_username"], s["entsoe_password"]
 
 
-def merge_year(cache_files: list[str], out_path: str) -> int:
-    """Sklej pliki miesieczne w jeden (pierwszy z naglowkiem). Zwraca liczbe wierszy."""
+def merge_year(cache_files: list[str], out_path: str,
+               area: str | None = None) -> int:
+    """Sklej pliki miesieczne w jeden (pierwszy z naglowkiem).
+
+    area: filtr AreaMapCode (np. 'PL'); None = wszystko.
+    Zwraca liczbe wierszy.
+    """
     rows = 0
     with open(out_path, "w", encoding="utf-8", newline="") as out:
         for i, path in enumerate(cache_files):
             with open(path, encoding="utf-8", newline="") as fh:
-                header = fh.readline()
+                header = fh.readline().rstrip("\r\n").split("\t")
                 if i == 0:
-                    out.write(header)
+                    out.write("\t".join(header) + "\n")
+                idx = header.index("AreaMapCode") if area else -1
                 for line in fh:
-                    out.write(line)
+                    if area:
+                        cols = line.rstrip("\r\n").split("\t")
+                        if idx >= len(cols) or cols[idx] != area:
+                            continue
+                    out.write(line if line.endswith("\n") else line + "\n")
                     rows += 1
     return rows
 
@@ -74,6 +84,10 @@ def main(argv=None) -> int:
                     help="test: maks plikow per instrument x rok")
     ap.add_argument("--overwrite", action="store_true",
                     help="sciagnij od nowa mimo cache")
+    ap.add_argument("--area", default=None,
+                    help="filtr AreaMapCode przy sklejaniu, np. --area PL (tylko Polska)")
+    ap.add_argument("--merge-only", action="store_true",
+                    help="tylko sklej z cache, bez pobierania")
     args = ap.parse_args(argv)
 
     keys = args.instruments or sorted(INSTRUMENTS)
@@ -85,9 +99,12 @@ def main(argv=None) -> int:
 
     username, password = load_creds()
     tm = TokenManager(username, password)
-    log("pobieram Export_log...")
-    entries = fetch_export_log(tm)
-    log(f"log: {len(entries)} wpisow")
+    if not args.merge_only:
+        log("pobieram Export_log...")
+        entries = fetch_export_log(tm)
+        log(f"log: {len(entries)} wpisow")
+    else:
+        entries = []
 
     os.makedirs(args.out, exist_ok=True)
     cache_dir = os.path.join(args.out, "_cache")
@@ -95,15 +112,27 @@ def main(argv=None) -> int:
 
     for key in keys:
         folder = INSTRUMENTS[key]["folder"]
-        wanted = sorted(
-            e["file_name"] for e in entries
-            if filename_to_folder(e["file_name"]) == folder
-            and e["file_name"][:4] in years
-        )
-        log(f"[{key}] {len(wanted)} plikow do sciagniecia")
-        by_year: dict[str, list[str]] = {}
-        for name in wanted:
-            by_year.setdefault(name[:4], []).append(name)
+        if args.merge_only:
+            # pliki juz w cache: <cache>/<key>/*.csv
+            key_dir = os.path.join(cache_dir, key)
+            names = sorted(
+                f for f in os.listdir(key_dir)
+                if f[:4] in years
+            ) if os.path.isdir(key_dir) else []
+            by_year: dict[str, list[str]] = {}
+            for n in names:
+                by_year.setdefault(n[:4], []).append(n)
+            log(f"[{key}] merge-only: {len(names)} plikow z cache")
+        else:
+            wanted = sorted(
+                e["file_name"] for e in entries
+                if filename_to_folder(e["file_name"]) == folder
+                and e["file_name"][:4] in years
+            )
+            log(f"[{key}] {len(wanted)} plikow do sciagniecia")
+            by_year = {}
+            for name in wanted:
+                by_year.setdefault(name[:4], []).append(name)
 
         def one(name: str) -> str | None:
             fname = normalize_filename(name)
@@ -127,13 +156,18 @@ def main(argv=None) -> int:
             names = by_year[year]
             if args.limit:
                 names = names[: args.limit]
-            with ThreadPoolExecutor(max_workers=args.workers) as ex:
-                cached = [p for p in ex.map(one, names) if p]
+            if args.merge_only:
+                cached = [os.path.join(cache_dir, key, n) for n in names
+                          if os.path.exists(os.path.join(cache_dir, key, n))]
+            else:
+                with ThreadPoolExecutor(max_workers=args.workers) as ex:
+                    cached = [p for p in ex.map(one, names) if p]
             if not cached:
                 log(f"[{key}] {year}: BRAK plikow (pominieto)")
                 continue
-            out_path = os.path.join(args.out, f"{key}_{year}.csv")
-            n = merge_year(cached, out_path)
+            suffix = f"_{args.area}" if args.area else ""
+            out_path = os.path.join(args.out, f"{key}_{year}{suffix}.csv")
+            n = merge_year(cached, out_path, area=args.area)
             mb = os.path.getsize(out_path) / 1048576
             log(f"[{key}] {year}: SKLEJONO {len(cached)} plikow -> "
                 f"{os.path.basename(out_path)} ({n} wierszy, {mb:.1f} MB)")
