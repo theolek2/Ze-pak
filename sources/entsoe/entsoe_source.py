@@ -210,7 +210,8 @@ def _updated_key(entry):
         return (1, entry.get("filename", ""))
 
 
-def _select_files(entries, folder, selected_files=None, latest_only=False):
+def _select_files(entries, folder, selected_files=None, latest_only=False,
+                  years=None):
     matches = [
         {
             "filename": normalize_filename(entry["file_name"]),
@@ -219,6 +220,13 @@ def _select_files(entries, folder, selected_files=None, latest_only=False):
         for entry in entries
         if filename_to_folder(entry["file_name"]) == folder
     ]
+
+    if years is not None:
+        wanted_years = {str(y) for y in years}
+        matches = [
+            item for item in matches
+            if item["filename"][:4] in wanted_years
+        ]
 
     if selected_files is not None:
         wanted = set(selected_files)
@@ -248,6 +256,8 @@ def _make_resource(cfg):
         seed: bool = False,
         selected_files=None,
         latest_only: bool = False,
+        years=None,
+        force: bool = False,
     ):
         tm = TokenManager(entsoe_username, entsoe_password)
         log = fetch_export_log(tm)
@@ -256,14 +266,15 @@ def _make_resource(cfg):
         seen = state.setdefault("files", {})
 
         files = _select_files(
-            log, cfg["folder"], selected_files=selected_files, latest_only=latest_only
+            log, cfg["folder"], selected_files=selected_files,
+            latest_only=latest_only, years=years,
         )
 
         for item in files:
             if seed:
                 seen[item["filename"]] = item["updated"]
                 continue
-            if seen.get(item["filename"]) == item["updated"]:
+            if not force and seen.get(item["filename"]) == item["updated"]:
                 continue
             print(f"[entsoe:{cfg['resource']}] pobieram {item['filename']}",
                   flush=True)
@@ -283,6 +294,8 @@ def entsoe_source(
     selected_instruments=None,
     selected_files=None,
     latest_only: bool = False,
+    years=None,
+    force: bool = False,
 ):
     if selected_instruments is None:
         selected = {
@@ -303,5 +316,7 @@ def entsoe_source(
             seed=seed,
             selected_files=selected_files,
             latest_only=latest_only,
+            years=years,
+            force=force,
         )
 

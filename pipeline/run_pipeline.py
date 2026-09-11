@@ -33,7 +33,8 @@ def _dest():
     return dlt.destinations.duckdb(DUCKDB_PATH)
 
 
-def run_entsoe(seed, selected_instruments=None, selected_files=None, latest_only=False):
+def run_entsoe(seed, selected_instruments=None, selected_files=None,
+               latest_only=False, years=None, force=False):
     pipeline = dlt.pipeline(
         pipeline_name="entsoe", destination=_dest(), dataset_name="raw"
     )
@@ -43,6 +44,8 @@ def run_entsoe(seed, selected_instruments=None, selected_files=None, latest_only
             selected_instruments=selected_instruments,
             selected_files=selected_files,
             latest_only=latest_only,
+            years=years,
+            force=force,
         )
     )
 
@@ -92,6 +95,17 @@ def main():
         action="store_true",
         help="ENTSO-E: tylko najnowszy plik wybranego instrumentu",
     )
+    parser.add_argument(
+        "--entsoe-years",
+        nargs="+",
+        default=None,
+        help="ENTSO-E: backfill rocznikow, np. --entsoe-years 2025 2026",
+    )
+    parser.add_argument(
+        "--entsoe-force",
+        action="store_true",
+        help="ENTSO-E: pobierz mimo zgodnego stanu (backfill po seedzie)",
+    )
     args = parser.parse_args()
 
     incremental_start = None
@@ -112,6 +126,8 @@ def main():
             selected_instruments=args.entsoe_instruments,
             selected_files=args.entsoe_file,
             latest_only=args.entsoe_latest,
+            years=args.entsoe_years,
+            force=args.entsoe_force,
         )
     if not args.entsoe_only:
         print("=== PSE ===", flush=True)
