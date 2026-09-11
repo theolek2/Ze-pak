@@ -279,6 +279,13 @@ def _make_resource(cfg):
             print(f"[entsoe:{cfg['resource']}] pobieram {item['filename']}",
                   flush=True)
             text = download_file_content(tm, cfg["folder"], item["filename"])
+            n = 0
+            for row in cfg["parse_rows"](text):
+                yield row
+                n += 1
+            mb = len(text.encode("utf-8", "ignore")) / 1048576
+            print(f"[entsoe:{cfg['resource']}] gotowe {item['filename']} "
+                  f"({n} wierszy, {mb:.1f} MB)", flush=True)
             for row in cfg["parse_rows"](text):
                 yield row
             seen[item["filename"]] = item["updated"]
